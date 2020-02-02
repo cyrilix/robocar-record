@@ -1,29 +1,33 @@
 package part
 
 import (
+	"fmt"
 	"github.com/cyrilix/robocar-base/service"
 	"github.com/cyrilix/robocar-protobuf/go/events"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"sync"
+	"time"
 )
 
 func NewRecorder(client mqtt.Client, recordTopic, cameraTopic, steeringTopic, switchRecordTopic string) *Recorder {
 	return &Recorder{
-		client:        client,
-		recordTopic:   recordTopic,
-		cameraTopic:   cameraTopic,
-		steeringTopic: steeringTopic,
+		client:            client,
+		recordTopic:       recordTopic,
+		cameraTopic:       cameraTopic,
+		steeringTopic:     steeringTopic,
 		switchRecordTopic: switchRecordTopic,
-		enabled:       false,
-		cancel:        make(chan interface{}),
+		enabled:           false,
+		idGenerator:       NewDateBasedGenerator(),
+		recordSet:         "",
+		cancel:            make(chan interface{}),
 	}
 }
 
 type Recorder struct {
-	client                     mqtt.Client
-	recordTopic                string
+	client                                        mqtt.Client
+	recordTopic                                   string
 	cameraTopic, steeringTopic, switchRecordTopic string
 
 	muSteeringMsg   sync.Mutex
@@ -31,6 +35,9 @@ type Recorder struct {
 
 	muEnabled sync.RWMutex
 	enabled   bool
+
+	idGenerator IdGenerator
+	recordSet   string
 
 	cancel chan interface {
 	}
@@ -63,6 +70,11 @@ func (r *Recorder) onSwitchRecord(_ mqtt.Client, message mqtt.Message) {
 
 	r.muEnabled.Lock()
 	defer r.muEnabled.Unlock()
+
+	if ! r.enabled && msg.GetEnabled() {
+		r.recordSet = r.idGenerator.Next()
+	}
+
 	r.enabled = msg.GetEnabled()
 }
 
@@ -98,8 +110,9 @@ func (r *Recorder) onFrame(_ mqtt.Client, message mqtt.Message) {
 	}
 
 	record := events.RecordMessage{
-		Frame:    &msg,
-		Steering: steering,
+		Frame:                &msg,
+		Steering:             steering,
+		RecordSet:            r.recordSet,
 	}
 
 	payload, err := proto.Marshal(&record)
@@ -142,4 +155,32 @@ var registerCallBacks = func(r *Recorder) {
 	if err != nil {
 		log.Panicf("unable to register callback to %v:%v", r.switchRecordTopic, err)
 	}
+}
+
+
+type IdGenerator interface {
+	Next() string
+}
+
+func NewDateBasedGenerator() *DateBasedGenerator {
+	return &DateBasedGenerator{
+		muCpt:      sync.Mutex{},
+		cpt:        0,
+		idTemplate: "%s-%d",
+		start:      time.Now().Format("2006011504"),
+	}
+}
+
+type DateBasedGenerator struct {
+	muCpt      sync.Mutex
+	cpt        int
+	idTemplate string
+	start      string
+}
+
+func (d *DateBasedGenerator) Next() string {
+	d.muCpt.Lock()
+	defer d.muCpt.Unlock()
+	d.cpt += 1
+	return fmt.Sprintf(d.idTemplate, d.start, d.cpt)
 }
