@@ -1,9 +1,9 @@
 .PHONY: test docker
 
-DOCKER_IMG = cyrilix/robocar-arduino
+DOCKER_IMG = cyrilix/robocar-record
 
 test:
-	go test -mod vendor ./cmd/rc-arduino ./arduino
+	go test -mod vendor ./cmd/rc-record ./part
 
 docker:
 	export DOCKEC_CLI_EXPERIMENTAL=enabled
