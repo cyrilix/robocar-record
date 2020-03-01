@@ -3,10 +3,10 @@ module github.com/cyrilix/robocar-record
 go 1.13
 
 require (
-	github.com/cyrilix/robocar-base v0.0.0-20200103000136-b08c9be9a69a
-	github.com/cyrilix/robocar-protobuf/go v0.0.0-20200202123632-eda50f0cce3b
+	github.com/cyrilix/robocar-base v0.1.0
+	github.com/cyrilix/robocar-protobuf/go v1.0.0
 	github.com/eclipse/paho.mqtt.golang v1.2.0
-	github.com/golang/protobuf v1.3.3
+	github.com/golang/protobuf v1.3.4
 	github.com/sirupsen/logrus v1.4.2
 	golang.org/x/net v0.0.0-20200114155413-6afb5195e5aa // indirect
 )
