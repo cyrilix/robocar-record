@@ -166,7 +166,7 @@ func NewDateBasedGenerator() *DateBasedGenerator {
 		muCpt:      sync.Mutex{},
 		cpt:        0,
 		idTemplate: "%s-%d",
-		start:      time.Now().Format("2006011504"),
+		start:      time.Now().Format("200601021504"),
 	}
 }
 

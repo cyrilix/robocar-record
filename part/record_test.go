@@ -54,7 +54,6 @@ func TestRecorder_Record(t *testing.T) {
 		start:      "record",
 	}
 
-
 	go func() {
 		if err := recorder.Start(); err == nil {
 			t.Fatalf("unable to start recorder: %v", err)
@@ -130,7 +129,7 @@ func loadImage(t *testing.T, imgPath string, id string) *events.FrameMessage {
 func TestDateBasedGenerator_Next(t *testing.T) {
 	log.SetLevel(log.InfoLevel)
 
-	expectedFmt := "[0-9]{4}[01][0-9][0-2][0-9][0-5][0-9]-[0-9]+"
+	expectedFmt := "[0-9]{4}[01][0-9][0-3][0-9][0-2][0-9][0-5][0-9]-[0-9]+"
 	r, err := regexp.Compile(expectedFmt)
 	if err != nil {
 		t.Fatalf("unable to compile expected regex: %v", err)
