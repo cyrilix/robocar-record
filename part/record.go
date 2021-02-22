@@ -71,7 +71,7 @@ func (r *Recorder) onSwitchRecord(_ mqtt.Client, message mqtt.Message) {
 	r.muEnabled.Lock()
 	defer r.muEnabled.Unlock()
 
-	if ! r.enabled && msg.GetEnabled() {
+	if !r.enabled && msg.GetEnabled() {
 		r.recordSet = r.idGenerator.Next()
 	}
 
@@ -110,9 +110,9 @@ func (r *Recorder) onFrame(_ mqtt.Client, message mqtt.Message) {
 	}
 
 	record := events.RecordMessage{
-		Frame:                &msg,
-		Steering:             steering,
-		RecordSet:            r.recordSet,
+		Frame:     &msg,
+		Steering:  steering,
+		RecordSet: r.recordSet,
 	}
 
 	payload, err := proto.Marshal(&record)
@@ -156,7 +156,6 @@ var registerCallBacks = func(r *Recorder) {
 		log.Panicf("unable to register callback to %v:%v", r.switchRecordTopic, err)
 	}
 }
-
 
 type IdGenerator interface {
 	Next() string
