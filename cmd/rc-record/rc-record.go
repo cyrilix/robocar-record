@@ -4,6 +4,7 @@ import (
 	"flag"
 	"github.com/cyrilix/robocar-base/cli"
 	"github.com/cyrilix/robocar-record/part"
+	"go.uber.org/zap"
 	"log"
 	"os"
 )
@@ -15,6 +16,7 @@ const (
 func main() {
 	var mqttBroker, username, password, clientId string
 	var cameraTopic, steeringTopic, recordTopic, switchRecordTopic string
+	var debug bool
 
 	mqttQos := cli.InitIntFlag("MQTT_QOS", 0)
 	_, mqttRetain := os.LookupEnv("MQTT_RETAIN")
@@ -25,6 +27,7 @@ func main() {
 	flag.StringVar(&steeringTopic, "mqtt-topic-steering", os.Getenv("MQTT_TOPIC_STEERING"), "Mqtt topic that contains steering raw values, use MQTT_TOPIC_STEERING if args not set")
 	flag.StringVar(&switchRecordTopic, "mqtt-topic-switch-record", os.Getenv("MQTT_TOPIC_SWITCH_RECORD"), "Mqtt topic that contain switch record state, use MQTT_TOPIC_SWITCH_RECORD if args not set")
 	flag.StringVar(&recordTopic, "mqtt-topic-records", os.Getenv("MQTT_TOPIC_RECORDS"), "Mqtt topic to publish record messages, use MQTT_TOPIC_RECORDS if args not set")
+	flag.BoolVar(&debug, "debug", false, "Display raw value to debug")
 
 	flag.Parse()
 	if len(os.Args) <= 1 {
@@ -32,9 +35,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	config := zap.NewDevelopmentConfig()
+	if debug {
+		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+	} else {
+		config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+	}
+	lgr, err := config.Build()
+	if err != nil {
+		log.Fatalf("unable to init logger: %v", err)
+	}
+	defer func() {
+		if err := lgr.Sync(); err != nil {
+			log.Printf("unable to Sync logger: %v\n", err)
+		}
+	}()
+	zap.ReplaceGlobals(lgr)
+
 	client, err := cli.Connect(mqttBroker, username, password, clientId)
 	if err != nil {
-		log.Fatalf("unable to connect to mqtt bus: %v", err)
+		zap.S().Fatalf("unable to connect to mqtt bus: %v", err)
 	}
 	defer client.Disconnect(50)
 
@@ -44,6 +64,6 @@ func main() {
 	cli.HandleExit(r)
 
 	if err := r.Start(); err != nil {
-		log.Fatalf("unable to start service: %v", err)
+		zap.S().Fatalf("unable to start service: %v", err)
 	}
 }

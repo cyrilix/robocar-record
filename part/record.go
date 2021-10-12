@@ -6,7 +6,8 @@ import (
 	"github.com/cyrilix/robocar-protobuf/go/events"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
+	"go.uber.org/zap"
+	"log"
 	"sync"
 	"time"
 )
@@ -49,7 +50,7 @@ func (r *Recorder) Start() error {
 	for {
 		select {
 		case <-r.cancel:
-			log.Infof("Stop service")
+			zap.S().Info("Stop service")
 			return nil
 		}
 	}
@@ -64,7 +65,7 @@ func (r *Recorder) onSwitchRecord(_ mqtt.Client, message mqtt.Message) {
 	var msg events.SwitchRecordMessage
 	err := proto.Unmarshal(message.Payload(), &msg)
 	if err != nil {
-		log.Errorf("unable to unmarshal protobuf %T: %v", msg, err)
+		zap.S().Errorf("unable to unmarshal protobuf %T: %v", msg, err)
 		return
 	}
 
@@ -82,7 +83,7 @@ func (r *Recorder) onSteering(_ mqtt.Client, message mqtt.Message) {
 	var msg events.SteeringMessage
 	err := proto.Unmarshal(message.Payload(), &msg)
 	if err != nil {
-		log.Errorf("unable to unmarshal protobuf %T: %v", msg, err)
+		zap.S().Errorf("unable to unmarshal protobuf %T: %v", msg, err)
 		return
 	}
 
@@ -99,13 +100,13 @@ func (r *Recorder) onFrame(_ mqtt.Client, message mqtt.Message) {
 	var msg events.FrameMessage
 	err := proto.Unmarshal(message.Payload(), &msg)
 	if err != nil {
-		log.Errorf("unable to unmarshal protobuf FrameMessage: %v", err)
+		zap.S().Errorf("unable to unmarshal protobuf FrameMessage: %v", err)
 		return
 	}
 
 	steering := r.CurrentSteering()
 	if steering == nil {
-		log.Warningf("no current steeringMsg, skip frameMsg %v", msg.GetId().Id)
+		zap.S().Warnf("no current steeringMsg, skip frameMsg %v", msg.GetId().Id)
 		return
 	}
 
@@ -117,7 +118,7 @@ func (r *Recorder) onFrame(_ mqtt.Client, message mqtt.Message) {
 
 	payload, err := proto.Marshal(&record)
 	if err != nil {
-		log.Errorf("unable to marshal message %v: %v", record, err)
+		zap.S().Errorf("unable to marshal message %v: %v", record, err)
 		return
 	}
 	publish(r.client, r.recordTopic, &payload)
