@@ -129,7 +129,7 @@ func loadImage(t *testing.T, imgPath string, id string) *events.FrameMessage {
 func TestDateBasedGenerator_Next(t *testing.T) {
 	log.SetLevel(log.InfoLevel)
 
-	expectedFmt := "[0-9]{4}[01][0-9][0-3][0-9][0-2][0-9][0-5][0-9]-[0-9]+"
+	expectedFmt := "[0-9]{4}-[01][0-9]-[0-3][0-9]T[0-2][0-9]-[0-5][0-9]_[0-9]+"
 	r, err := regexp.Compile(expectedFmt)
 	if err != nil {
 		t.Fatalf("unable to compile expected regex: %v", err)
@@ -144,14 +144,14 @@ func TestDateBasedGenerator_Next(t *testing.T) {
 	id2 := d.Next()
 	log.Debugf("2nd id: %v", id2)
 
-	if strings.Split(id1, "-")[0] != strings.Split(id2, "-")[0] {
+	if strings.Split(id1, "_")[0] != strings.Split(id2, "_")[0] {
 		t.Errorf("ids are differentt prefixes: %v - %v", strings.Split(id1, "-")[0], strings.Split(id2, "-")[0])
 	}
 
-	if strings.Split(id1, "-")[1] != "1" {
+	if strings.Split(id1, "_")[1] != "1" {
 		t.Errorf("unexpected suffix: %v, wants %v", strings.Split(id1, "-")[1], "1")
 	}
-	if strings.Split(id2, "-")[1] != "2" {
+	if strings.Split(id2, "_")[1] != "2" {
 		t.Errorf("unexpected suffix: %v, wants %v", strings.Split(id2, "-")[1], "2")
 	}
 }
