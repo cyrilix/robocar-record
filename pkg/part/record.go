@@ -7,7 +7,6 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/golang/protobuf/proto"
 	"go.uber.org/zap"
-	"log"
 	"sync"
 	"time"
 )
@@ -144,17 +143,17 @@ func (r *Recorder) Enabled() bool {
 var registerCallBacks = func(r *Recorder) {
 	err := service.RegisterCallback(r.client, r.cameraTopic, r.onFrame)
 	if err != nil {
-		log.Panicf("unable to register callback to %v:%v", r.cameraTopic, err)
+		zap.S().Panicf("unable to register callback to %v:%v", r.cameraTopic, err)
 	}
 
 	err = service.RegisterCallback(r.client, r.steeringTopic, r.onSteering)
 	if err != nil {
-		log.Panicf("unable to register callback to %v:%v", r.steeringTopic, err)
+		zap.S().Panicf("unable to register callback to %v:%v", r.steeringTopic, err)
 	}
 
 	err = service.RegisterCallback(r.client, r.switchRecordTopic, r.onSwitchRecord)
 	if err != nil {
-		log.Panicf("unable to register callback to %v:%v", r.switchRecordTopic, err)
+		zap.S().Panicf("unable to register callback to %v:%v", r.switchRecordTopic, err)
 	}
 }
 

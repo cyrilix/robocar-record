@@ -5,7 +5,7 @@ import (
 	"github.com/cyrilix/robocar-protobuf/go/events"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 	"io/ioutil"
 	"regexp"
 	"strings"
@@ -127,8 +127,6 @@ func loadImage(t *testing.T, imgPath string, id string) *events.FrameMessage {
 }
 
 func TestDateBasedGenerator_Next(t *testing.T) {
-	log.SetLevel(log.InfoLevel)
-
 	expectedFmt := "[0-9]{4}-[01][0-9]-[0-3][0-9]T[0-2][0-9]-[0-5][0-9]_[0-9]+"
 	r, err := regexp.Compile(expectedFmt)
 	if err != nil {
@@ -136,13 +134,13 @@ func TestDateBasedGenerator_Next(t *testing.T) {
 	}
 	d := NewDateBasedGenerator()
 	id1 := d.Next()
-	log.Debugf("first id: %v", id1)
+	zap.S().Debugf("first id: %v", id1)
 	if !r.MatchString(id1) {
 		t.Errorf("Unexpected id format: %v, wants: %s", id1, expectedFmt)
 	}
 
 	id2 := d.Next()
-	log.Debugf("2nd id: %v", id2)
+	zap.S().Debugf("2nd id: %v", id2)
 
 	if strings.Split(id1, "_")[0] != strings.Split(id2, "_")[0] {
 		t.Errorf("ids are differentt prefixes: %v - %v", strings.Split(id1, "-")[0], strings.Split(id2, "-")[0])
