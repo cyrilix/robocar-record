@@ -11,12 +11,15 @@ import (
 	"time"
 )
 
-func NewRecorder(client mqtt.Client, recordTopic, cameraTopic, steeringTopic, switchRecordTopic string) *Recorder {
+func NewRecorder(client mqtt.Client, recordTopic, cameraTopic, rcSteeringTopic, tfSteeringTopic, driveModeTopic,
+	switchRecordTopic string) *Recorder {
 	return &Recorder{
 		client:            client,
 		recordTopic:       recordTopic,
 		cameraTopic:       cameraTopic,
-		steeringTopic:     steeringTopic,
+		rcSteeringTopic:   rcSteeringTopic,
+		tfSteeringTopic:   tfSteeringTopic,
+		driveModeTopic:    driveModeTopic,
 		switchRecordTopic: switchRecordTopic,
 		enabled:           false,
 		idGenerator:       NewDateBasedGenerator(),
@@ -26,12 +29,20 @@ func NewRecorder(client mqtt.Client, recordTopic, cameraTopic, steeringTopic, sw
 }
 
 type Recorder struct {
-	client                                        mqtt.Client
-	recordTopic                                   string
-	cameraTopic, steeringTopic, switchRecordTopic string
+	client                         mqtt.Client
+	recordTopic                    string
+	cameraTopic, switchRecordTopic string
 
-	muSteeringMsg   sync.Mutex
-	currentSteering *events.SteeringMessage
+	driveModeTopic, rcSteeringTopic, tfSteeringTopic string
+
+	muRcSteeringMsg   sync.Mutex
+	currentRcSteering *events.SteeringMessage
+
+	muTfSteeringMsg   sync.Mutex
+	currentTfSteering *events.SteeringMessage
+
+	muDriveModeMsg   sync.Mutex
+	currentDriveMode *events.DriveModeMessage
 
 	muEnabled sync.RWMutex
 	enabled   bool
@@ -57,7 +68,7 @@ func (r *Recorder) Start() error {
 
 func (r *Recorder) Stop() {
 	close(r.cancel)
-	service.StopService("record", r.client, r.cameraTopic, r.steeringTopic)
+	service.StopService("record", r.client, r.cameraTopic, r.rcSteeringTopic, r.tfSteeringTopic, r.driveModeTopic)
 }
 
 func (r *Recorder) onSwitchRecord(_ mqtt.Client, message mqtt.Message) {
@@ -78,7 +89,7 @@ func (r *Recorder) onSwitchRecord(_ mqtt.Client, message mqtt.Message) {
 	r.enabled = msg.GetEnabled()
 }
 
-func (r *Recorder) onSteering(_ mqtt.Client, message mqtt.Message) {
+func (r *Recorder) onRcSteering(_ mqtt.Client, message mqtt.Message) {
 	var msg events.SteeringMessage
 	err := proto.Unmarshal(message.Payload(), &msg)
 	if err != nil {
@@ -86,9 +97,35 @@ func (r *Recorder) onSteering(_ mqtt.Client, message mqtt.Message) {
 		return
 	}
 
-	r.muSteeringMsg.Lock()
-	defer r.muSteeringMsg.Unlock()
-	r.currentSteering = &msg
+	r.muRcSteeringMsg.Lock()
+	defer r.muRcSteeringMsg.Unlock()
+	r.currentRcSteering = &msg
+}
+
+func (r *Recorder) onTfSteering(_ mqtt.Client, message mqtt.Message) {
+	var msg events.SteeringMessage
+	err := proto.Unmarshal(message.Payload(), &msg)
+	if err != nil {
+		zap.S().Errorf("unable to unmarshal protobuf %T: %v", msg, err)
+		return
+	}
+
+	r.muTfSteeringMsg.Lock()
+	defer r.muTfSteeringMsg.Unlock()
+	r.currentTfSteering = &msg
+}
+
+func (r *Recorder) onDriveMode(_ mqtt.Client, message mqtt.Message) {
+	var msg events.DriveModeMessage
+	err := proto.Unmarshal(message.Payload(), &msg)
+	if err != nil {
+		zap.S().Errorf("unable to unmarshal protobuf %T: %v", msg, err)
+		return
+	}
+
+	r.muDriveModeMsg.Lock()
+	defer r.muDriveModeMsg.Unlock()
+	r.currentDriveMode = &msg
 }
 
 func (r *Recorder) onFrame(_ mqtt.Client, message mqtt.Message) {
@@ -109,10 +146,22 @@ func (r *Recorder) onFrame(_ mqtt.Client, message mqtt.Message) {
 		return
 	}
 
+	autopilot := r.CurrentAutopilotSteering()
+	if autopilot == nil {
+		zap.S().Warnf("no current autopilot steeringMsg")
+	}
+
+	driveMode := r.CurrentDriveMode()
+	if driveMode == nil {
+		zap.S().Warnf("no current driveModeMsg")
+	}
+
 	record := events.RecordMessage{
-		Frame:     &msg,
-		Steering:  steering,
-		RecordSet: r.recordSet,
+		Frame:             &msg,
+		Steering:          steering,
+		AutopilotSteering: autopilot,
+		DriveMode:         driveMode,
+		RecordSet:         r.recordSet,
 	}
 
 	payload, err := proto.Marshal(&record)
@@ -128,10 +177,24 @@ var publish = func(client mqtt.Client, topic string, payload *[]byte) {
 }
 
 func (r *Recorder) CurrentSteering() *events.SteeringMessage {
-	r.muSteeringMsg.Lock()
-	defer r.muSteeringMsg.Unlock()
-	steering := r.currentSteering
+	r.muRcSteeringMsg.Lock()
+	defer r.muRcSteeringMsg.Unlock()
+	steering := r.currentRcSteering
 	return steering
+}
+
+func (r *Recorder) CurrentAutopilotSteering() *events.SteeringMessage {
+	r.muTfSteeringMsg.Lock()
+	defer r.muTfSteeringMsg.Unlock()
+	steering := r.currentTfSteering
+	return steering
+}
+
+func (r *Recorder) CurrentDriveMode() *events.DriveModeMessage {
+	r.muDriveModeMsg.Lock()
+	defer r.muDriveModeMsg.Unlock()
+	driveMode := r.currentDriveMode
+	return driveMode
 }
 
 func (r *Recorder) Enabled() bool {
@@ -146,9 +209,19 @@ var registerCallBacks = func(r *Recorder) {
 		zap.S().Panicf("unable to register callback to %v:%v", r.cameraTopic, err)
 	}
 
-	err = service.RegisterCallback(r.client, r.steeringTopic, r.onSteering)
+	err = service.RegisterCallback(r.client, r.rcSteeringTopic, r.onRcSteering)
 	if err != nil {
-		zap.S().Panicf("unable to register callback to %v:%v", r.steeringTopic, err)
+		zap.S().Panicf("unable to register callback to %v:%v", r.rcSteeringTopic, err)
+	}
+
+	err = service.RegisterCallback(r.client, r.tfSteeringTopic, r.onTfSteering)
+	if err != nil {
+		zap.S().Panicf("unable to register callback to %v:%v", r.tfSteeringTopic, err)
+	}
+
+	err = service.RegisterCallback(r.client, r.driveModeTopic, r.onDriveMode)
+	if err != nil {
+		zap.S().Panicf("unable to register callback to %v:%v", r.driveModeTopic, err)
 	}
 
 	err = service.RegisterCallback(r.client, r.switchRecordTopic, r.onSwitchRecord)

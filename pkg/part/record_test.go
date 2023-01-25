@@ -6,7 +6,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
-	"io/ioutil"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -27,6 +27,8 @@ func TestRecorder_Record(t *testing.T) {
 	recordTopic := "topic/record"
 	cameraTopic := "topic/camera"
 	steeringTopic := "topic/steeringMsg"
+	autopilotSteeringTopic := "topic/autopilot/steering"
+	driveModeTopic := "topic/driveMode"
 	switchRecord := "topic/switch/record"
 
 	var muEventsPublished sync.Mutex
@@ -46,7 +48,13 @@ func TestRecorder_Record(t *testing.T) {
 		eventsPublished = &msg
 	}
 
-	recorder := NewRecorder(nil, recordTopic, cameraTopic, steeringTopic, switchRecord)
+	recorder := NewRecorder(nil,
+		recordTopic,
+		cameraTopic,
+		steeringTopic,
+		autopilotSteeringTopic,
+		driveModeTopic,
+		switchRecord)
 	recorder.idGenerator = &DateBasedGenerator{
 		muCpt:      sync.Mutex{},
 		cpt:        0,
@@ -64,24 +72,52 @@ func TestRecorder_Record(t *testing.T) {
 	frame2 := loadImage(t, "testdata/img.jpg", "02")
 	steeringRight := events.SteeringMessage{Steering: 0.5, Confidence: 1.0}
 	steeringLeft := events.SteeringMessage{Steering: -0.5, Confidence: 1.0}
+	autopilotLeft := events.SteeringMessage{Steering: -0.8, Confidence: 1.0}
+	driveModeManuel := events.DriveModeMessage{DriveMode: events.DriveMode_USER}
 
 	cases := []struct {
 		recordMsg         *events.SwitchRecordMessage
 		frameMsg          *events.FrameMessage
 		steeringMsg       *events.SteeringMessage
+		autopilotMsg      *events.SteeringMessage
+		driveModeMsg      *events.DriveModeMessage
 		expectedRecordMsg *events.RecordMessage
 		wait              time.Duration
 	}{
-		{recordMsg: &events.SwitchRecordMessage{Enabled: false}, frameMsg: nil, steeringMsg: nil, expectedRecordMsg: nil, wait: 5 * time.Millisecond},
-		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: nil, steeringMsg: nil, expectedRecordMsg: nil, wait: 5 * time.Millisecond},
-		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: frame1, steeringMsg: nil, expectedRecordMsg: nil, wait: 5 * time.Millisecond},
-		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: nil, steeringMsg: &steeringRight, expectedRecordMsg: nil, wait: 5 * time.Millisecond},
-		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: frame1, steeringMsg: &steeringRight, expectedRecordMsg: &events.RecordMessage{RecordSet: "record-1", Frame: frame1, Steering: &steeringRight}, wait: 5 * time.Millisecond},
-		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: nil, steeringMsg: &steeringLeft, expectedRecordMsg: nil, wait: 5 * time.Millisecond},
-		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: frame2, steeringMsg: &steeringLeft, expectedRecordMsg: &events.RecordMessage{RecordSet: "record-1", Frame: frame2, Steering: &steeringLeft}, wait: 5 * time.Millisecond},
-		{recordMsg: &events.SwitchRecordMessage{Enabled: false}, frameMsg: nil, steeringMsg: nil, expectedRecordMsg: nil, wait: 5 * time.Millisecond},
-		{recordMsg: &events.SwitchRecordMessage{Enabled: false}, frameMsg: nil, steeringMsg: nil, expectedRecordMsg: nil, wait: 5 * time.Millisecond},
-		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: frame1, steeringMsg: &steeringRight, expectedRecordMsg: &events.RecordMessage{RecordSet: "record-2", Frame: frame1, Steering: &steeringLeft}, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: false}, frameMsg: nil,
+			steeringMsg: nil, autopilotMsg: nil, driveModeMsg: nil,
+			expectedRecordMsg: nil, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: nil,
+			steeringMsg: nil, autopilotMsg: nil, driveModeMsg: nil,
+			expectedRecordMsg: nil, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: frame1,
+			steeringMsg: nil, autopilotMsg: nil, driveModeMsg: nil,
+			expectedRecordMsg: nil, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: nil,
+			steeringMsg: &steeringRight, autopilotMsg: nil, driveModeMsg: nil,
+			expectedRecordMsg: nil, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: frame1,
+			steeringMsg: &steeringRight, autopilotMsg: nil, driveModeMsg: nil,
+			expectedRecordMsg: &events.RecordMessage{RecordSet: "record-1", Frame: frame1, Steering: &steeringRight}, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: nil,
+			steeringMsg: &steeringLeft, autopilotMsg: nil, driveModeMsg: nil,
+			expectedRecordMsg: nil, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: frame2,
+			steeringMsg: &steeringLeft, autopilotMsg: nil, driveModeMsg: nil,
+			expectedRecordMsg: &events.RecordMessage{RecordSet: "record-1", Frame: frame2, Steering: &steeringLeft}, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: false}, frameMsg: nil,
+			steeringMsg: nil, autopilotMsg: nil, driveModeMsg: nil,
+			expectedRecordMsg: nil, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: false}, frameMsg: nil,
+			steeringMsg: nil, autopilotMsg: nil, driveModeMsg: nil,
+			expectedRecordMsg: nil, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: frame1,
+			steeringMsg: &steeringRight, autopilotMsg: nil, driveModeMsg: nil,
+			expectedRecordMsg: &events.RecordMessage{RecordSet: "record-2", Frame: frame1, Steering: &steeringLeft}, wait: 5 * time.Millisecond},
+		{recordMsg: &events.SwitchRecordMessage{Enabled: true}, frameMsg: frame1,
+			steeringMsg: &steeringRight, autopilotMsg: &autopilotLeft, driveModeMsg: &driveModeManuel,
+			expectedRecordMsg: &events.RecordMessage{RecordSet: "record-2", Frame: frame1, Steering: &steeringRight, AutopilotSteering: &autopilotLeft, DriveMode: &driveModeManuel},
+			wait:              5 * time.Millisecond},
 	}
 
 	for _, c := range cases {
@@ -89,6 +125,12 @@ func TestRecorder_Record(t *testing.T) {
 		eventsPublished = nil
 		muEventsPublished.Unlock()
 
+		if c.autopilotMsg != nil {
+			recorder.onTfSteering(nil, testtools.NewFakeMessageFromProtobuf(autopilotSteeringTopic, c.autopilotMsg))
+		}
+		if c.driveModeMsg != nil {
+			recorder.onDriveMode(nil, testtools.NewFakeMessageFromProtobuf(driveModeTopic, c.driveModeMsg))
+		}
 		if c.recordMsg != nil {
 			recorder.onSwitchRecord(nil, testtools.NewFakeMessageFromProtobuf(recordTopic, c.recordMsg))
 		}
@@ -96,7 +138,7 @@ func TestRecorder_Record(t *testing.T) {
 			recorder.onFrame(nil, testtools.NewFakeMessageFromProtobuf(cameraTopic, c.frameMsg))
 		}
 		if c.steeringMsg != nil {
-			recorder.onSteering(nil, testtools.NewFakeMessageFromProtobuf(steeringTopic, c.steeringMsg))
+			recorder.onRcSteering(nil, testtools.NewFakeMessageFromProtobuf(steeringTopic, c.steeringMsg))
 		}
 
 		time.Sleep(c.wait)
@@ -112,7 +154,7 @@ func TestRecorder_Record(t *testing.T) {
 }
 
 func loadImage(t *testing.T, imgPath string, id string) *events.FrameMessage {
-	jpegContent, err := ioutil.ReadFile(imgPath)
+	jpegContent, err := os.ReadFile(imgPath)
 	if err != nil {
 		t.Fatalf("unable to load image: %v", err)
 	}
